@@ -53,7 +53,7 @@ public:
 
   ~MpscQueue() = default;
 
-  StateMetaData EmplaceStoppedState();
+  StateMetaData EmplaceStoppedState() noexcept;
 
   template<typename... Args>
   StateMetaData Emplace(Args&&... args) noexcept;
@@ -92,7 +92,7 @@ MpscQueue<T>::StateMetaData MpscQueue<T>::Emplace(Args&&... args) noexcept
 }
 
 template<typename T>
-MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceStoppedState()
+MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceStoppedState() noexcept
 {
   return EmplaceImpl<StoppedState>();
 }

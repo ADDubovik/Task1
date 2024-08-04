@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <format>
+#include <memory>
 
 struct Data
 {
@@ -71,6 +72,15 @@ int main()
 	{
 		MpscQueue<std::string> queue(128);
 		std::string test1;
+		//queue.Emplace(test1);
+		queue.Emplace(std::move(test1));
+		queue.EmplaceStoppedState();
+		const auto data = queue.Dequeue();
+	}
+
+	{
+		MpscQueue<std::unique_ptr<int>> queue(128);
+		auto test1 = std::make_unique<int>(42);
 		//queue.Emplace(test1);
 		queue.Emplace(std::move(test1));
 		queue.EmplaceStoppedState();
