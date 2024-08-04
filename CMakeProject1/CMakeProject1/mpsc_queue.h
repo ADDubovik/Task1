@@ -46,6 +46,10 @@ public:
     , _buf_size(buf_size)
     , _buffer(buf_size)
   {
+    for (size_t i = 0; i < _buffer.size(); ++i)
+    {
+      _buffer[i].seq_allowed_for_write = i;
+    }
   }
 
   MpscQueue(const MpscQueue&) = delete;
@@ -65,10 +69,10 @@ public:
   [[nodiscard]] std::variant<Value, StoppedState> Dequeue() noexcept;
 
 private:
-  //struct alignas(cache_line) Node
   struct alignas(cache_line) Node
   {
-    std::atomic<NodeStatus> node_status = NodeStatus::EMPTY;
+    alignas(cache_line) std::atomic<NodeStatus> node_status = NodeStatus::EMPTY;
+    alignas(cache_line) std::atomic<uint64_t> seq_allowed_for_write;
     std::variant<Value, StoppedState> data;
   };
 
@@ -80,6 +84,11 @@ private:
     const auto index = sequence % _buf_size;
 
     auto& node = _buffer[index];
+
+    while (node.seq_allowed_for_write != sequence)
+    {
+      std::this_thread::yield();
+    }
 
     {
       NodeStatus expected = NodeStatus::EMPTY;
@@ -107,6 +116,15 @@ private:
     {
       NodeStatus expected = NodeStatus::EMPLACE_IN_PROGRESS;
       if (!node.node_status.compare_exchange_strong(expected, NodeStatus::FILLED))
+      {
+        // Logic error
+        std::terminate();
+      }
+    }
+
+    {
+      size_t expected = sequence;
+      if (!node.seq_allowed_for_write.compare_exchange_strong(expected, sequence + _buf_size))
       {
         // Logic error
         std::terminate();
@@ -143,6 +161,7 @@ MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceStoppedState()
 template<typename T>
 std::variant<typename MpscQueue<T>::Value, typename MpscQueue<T>::StoppedState> MpscQueue<T>::Dequeue() noexcept
 {
+  const auto read_sequence_initial = _read_sequence;
   const auto index = _read_sequence % _buf_size;
   ++_read_sequence;
 
