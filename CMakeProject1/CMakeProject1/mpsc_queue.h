@@ -65,6 +65,7 @@ public:
   [[nodiscard]] std::variant<Value, StoppedState> Dequeue() noexcept;
 
 private:
+  //struct alignas(cache_line) Node
   struct alignas(cache_line) Node
   {
     std::atomic<NodeStatus> node_status = NodeStatus::EMPTY;
@@ -85,6 +86,7 @@ private:
       while (!node.node_status.compare_exchange_strong(expected, NodeStatus::EMPLACE_IN_PROGRESS))
       {
         std::this_thread::yield();
+        expected = NodeStatus::EMPTY;
       }
     }
 
@@ -151,6 +153,7 @@ std::variant<typename MpscQueue<T>::Value, typename MpscQueue<T>::StoppedState> 
     while (!node.node_status.compare_exchange_strong(expected, NodeStatus::DEQUEU_IN_PROGRESS))
     {
       std::this_thread::yield();
+      expected = NodeStatus::FILLED;
     }
   }
 
