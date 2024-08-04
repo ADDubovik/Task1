@@ -14,14 +14,6 @@ static constexpr auto cache_line = 64;
 template<typename T>
 class MpscQueue
 {
-  enum class NodeStatus
-  {
-    EMPTY,
-    EMPLACE_IN_PROGRESS,
-    DEQUEU_IN_PROGRESS,
-    FILLED,
-  };
-
 public:
   struct StateMetaData
   {
@@ -71,7 +63,7 @@ public:
 private:
   struct alignas(cache_line) Node
   {
-    alignas(cache_line) std::atomic<NodeStatus> node_status = NodeStatus::EMPTY;
+    alignas(cache_line) std::atomic_bool is_filled;
     alignas(cache_line) std::atomic<uint64_t> seq_allowed_for_write;
     std::variant<Value, StoppedState> data;
   };
@@ -118,13 +110,9 @@ MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceImpl(Args&&... args) noexcept
     std::this_thread::yield();
   }
 
+  while (node.is_filled)
   {
-    NodeStatus expected = NodeStatus::EMPTY;
-    while (!node.node_status.compare_exchange_strong(expected, NodeStatus::EMPLACE_IN_PROGRESS))
-    {
-      std::this_thread::yield();
-      expected = NodeStatus::EMPTY;
-    }
+    std::this_thread::yield();
   }
 
   static_assert(requires {
@@ -142,8 +130,8 @@ MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceImpl(Args&&... args) noexcept
   node.data.emplace<Type>(meta_data, std::forward<Args>(args) ...);
 
   {
-    NodeStatus expected = NodeStatus::EMPLACE_IN_PROGRESS;
-    if (!node.node_status.compare_exchange_strong(expected, NodeStatus::FILLED))
+    bool expected = false;
+    if (!node.is_filled.compare_exchange_strong(expected, true))
     {
       // Logic error
       std::terminate();
@@ -171,13 +159,9 @@ std::variant<typename MpscQueue<T>::Value, typename MpscQueue<T>::StoppedState> 
 
   auto& node = _buffer[index];
 
+  while (!node.is_filled)
   {
-    NodeStatus expected = NodeStatus::FILLED;
-    while (!node.node_status.compare_exchange_strong(expected, NodeStatus::DEQUEU_IN_PROGRESS))
-    {
-      std::this_thread::yield();
-      expected = NodeStatus::FILLED;
-    }
+    std::this_thread::yield();
   }
 
   std::variant<Value, StoppedState> result;
@@ -194,8 +178,8 @@ std::variant<typename MpscQueue<T>::Value, typename MpscQueue<T>::StoppedState> 
   );
 
   {
-    NodeStatus expected = NodeStatus::DEQUEU_IN_PROGRESS;
-    if (!node.node_status.compare_exchange_strong(expected, NodeStatus::EMPTY))
+    bool expected = true;
+    if (!node.is_filled.compare_exchange_strong(expected, false))
     {
       // Logic error
       std::terminate();

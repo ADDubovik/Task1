@@ -21,8 +21,6 @@ using Report = std::map<std::thread::id, Queue::Value>;
 void ProduceFn(const size_t count, Queue& queue)
 {
 	const auto id = std::this_thread::get_id();
-	//std::vector<Queue::Value> values;
-	//values.reserve(count);
 
 	Data data
 	{
@@ -33,7 +31,6 @@ void ProduceFn(const size_t count, Queue& queue)
 	for (size_t i = 0; i < count; ++i)
 	{
 		const auto meta_data = queue.Emplace(data);
-		//values.emplace_back(Queue::Value{ .meta_data = meta_data, .data = data, });
 		++data.num;
 	}
 }
@@ -83,15 +80,19 @@ int main()
 	using namespace std::chrono;
 
 	{
+		constexpr auto producer_threads_count = 4;
+		constexpr size_t messages_count = 1'000'000;
+		constexpr size_t buffer_size = 64 * 1024;
+
 		Report report;
 
 		{
-			constexpr auto producer_threads_count = 4;
-			constexpr size_t messages_count = 1'000'000;
-			constexpr size_t buffer_size = 64 * 1024;
+			const auto start_ctor = steady_clock::now();
 			Queue queue(buffer_size);
+			const auto end_ctor = steady_clock::now();
+			std::cout << std::format("Queue construction: {} ms\n", duration_cast<milliseconds>(end_ctor - start_ctor).count());
 
-			const auto start = steady_clock::now();
+			const auto start_processing = steady_clock::now();
 			{
 				auto consume_thread = std::jthread{ &ConsumeFn, std::ref(queue), std::ref(report) };
 				{
@@ -103,14 +104,22 @@ int main()
 				}
 				queue.EmplaceStoppedState();
 			}
-			const auto end = steady_clock::now();
+			const auto end_processing = steady_clock::now();
 
-			std::cout << std::format("overall duration is: {} ms\n", duration_cast<milliseconds>(end - start).count());
+			std::cout << std::format("overall duration is: {} ms\n", duration_cast<milliseconds>(end_processing - start_processing).count());
 		}
 
 		for (const auto& elem : report)
 		{
 			std::cout << elem.first << ": " << elem.second.data.num << std::endl;
+		}
+
+		for (const auto& elem : report)
+		{
+			if (elem.second.data.num != messages_count)
+			{
+				throw std::runtime_error("Incorrect messages count");
+			}
 		}
 	}
 
