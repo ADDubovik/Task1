@@ -8,7 +8,7 @@ add_executable (
   "CMakeProject1.cpp"
   "CMakeProject1.h"
   "IEvent.h"
-  "mcsp_queue.h "
+  "mpsc_queue.h "
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)

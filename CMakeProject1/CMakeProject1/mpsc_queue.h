@@ -11,7 +11,7 @@ static constexpr auto cache_line = 64;
 
 // Has implicit requirement for T to be default constructible
 template<typename T>
-class McspQueue
+class MpscQueue
 {
 public:
   struct StoppedState
@@ -19,7 +19,7 @@ public:
   };
 
 public:
-  explicit McspQueue(const size_t buf_size)
+  explicit MpscQueue(const size_t buf_size)
     : _read_sequence(0)
     , _buf_size(buf_size)
     , _buffer(buf_size)
@@ -79,19 +79,19 @@ private:
 
 template<typename T>
 template<typename... Args>
-void McspQueue<T>::Emplace(Args&&... args) noexcept
+void MpscQueue<T>::Emplace(Args&&... args) noexcept
 {
   EmplaceImpl<T>(std::forward<Args>(args) ...);
 }
 
 template<typename T>
-void McspQueue<T>::EmplaceStoppedState()
+void MpscQueue<T>::EmplaceStoppedState()
 {
   EmplaceImpl<StoppedState>();
 }
 
 template<typename T>
-std::variant<T, typename McspQueue<T>::StoppedState> McspQueue<T>::Dequeue() noexcept
+std::variant<T, typename MpscQueue<T>::StoppedState> MpscQueue<T>::Dequeue() noexcept
 {
   const auto index = _read_sequence % _buf_size;
   ++_read_sequence;
