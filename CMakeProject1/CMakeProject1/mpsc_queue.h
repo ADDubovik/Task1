@@ -78,61 +78,7 @@ private:
 
 private:
   template<typename Type, typename... Args>
-  StateMetaData EmplaceImpl(Args&&... args) noexcept
-  {
-    const auto sequence = _write_sequence.fetch_add(1);
-    const auto index = sequence % _buf_size;
-
-    auto& node = _buffer[index];
-
-    while (node.seq_allowed_for_write != sequence)
-    {
-      std::this_thread::yield();
-    }
-
-    {
-      NodeStatus expected = NodeStatus::EMPTY;
-      while (!node.node_status.compare_exchange_strong(expected, NodeStatus::EMPLACE_IN_PROGRESS))
-      {
-        std::this_thread::yield();
-        expected = NodeStatus::EMPTY;
-      }
-    }
-
-    static_assert(requires {
-      {
-        T(std::forward<Args>(args)...)
-      } noexcept;
-    });
-
-    StateMetaData meta_data
-    {
-      .sequence = sequence,
-      .index = index,
-    };
-
-    node.data.emplace<Type>(meta_data, std::forward<Args>(args) ...);
-
-    {
-      NodeStatus expected = NodeStatus::EMPLACE_IN_PROGRESS;
-      if (!node.node_status.compare_exchange_strong(expected, NodeStatus::FILLED))
-      {
-        // Logic error
-        std::terminate();
-      }
-    }
-
-    {
-      size_t expected = sequence;
-      if (!node.seq_allowed_for_write.compare_exchange_strong(expected, sequence + _buf_size))
-      {
-        // Logic error
-        std::terminate();
-      }
-    }
-
-    return meta_data;
-  }
+  inline StateMetaData EmplaceImpl(Args&&... args) noexcept;
 
 private:
   alignas(cache_line) std::atomic<uint64_t> _write_sequence;
@@ -156,6 +102,64 @@ template<typename T>
 MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceStoppedState()
 {
   return EmplaceImpl<StoppedState>();
+}
+
+template<typename T>
+template<typename Type, typename... Args>
+MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceImpl(Args&&... args) noexcept
+{
+  const auto sequence = _write_sequence.fetch_add(1);
+  const auto index = sequence % _buf_size;
+
+  auto& node = _buffer[index];
+
+  while (node.seq_allowed_for_write != sequence)
+  {
+    std::this_thread::yield();
+  }
+
+  {
+    NodeStatus expected = NodeStatus::EMPTY;
+    while (!node.node_status.compare_exchange_strong(expected, NodeStatus::EMPLACE_IN_PROGRESS))
+    {
+      std::this_thread::yield();
+      expected = NodeStatus::EMPTY;
+    }
+  }
+
+  static_assert(requires {
+    {
+      T(std::forward<Args>(args)...)
+    } noexcept;
+  });
+
+  StateMetaData meta_data
+  {
+    .sequence = sequence,
+    .index = index,
+  };
+
+  node.data.emplace<Type>(meta_data, std::forward<Args>(args) ...);
+
+  {
+    NodeStatus expected = NodeStatus::EMPLACE_IN_PROGRESS;
+    if (!node.node_status.compare_exchange_strong(expected, NodeStatus::FILLED))
+    {
+      // Logic error
+      std::terminate();
+    }
+  }
+
+  {
+    size_t expected = sequence;
+    if (!node.seq_allowed_for_write.compare_exchange_strong(expected, sequence + _buf_size))
+    {
+      // Logic error
+      std::terminate();
+    }
+  }
+
+  return meta_data;
 }
 
 template<typename T>
