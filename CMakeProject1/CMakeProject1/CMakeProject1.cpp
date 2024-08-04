@@ -6,6 +6,8 @@
 #include <thread>
 #include <map>
 #include <array>
+#include <chrono>
+#include <format>
 
 struct Data
 {
@@ -19,8 +21,8 @@ using Report = std::map<std::thread::id, Queue::Value>;
 void ProduceFn(const size_t count, Queue& queue)
 {
 	const auto id = std::this_thread::get_id();
-	std::vector<Queue::Value> values;
-	values.reserve(count);
+	//std::vector<Queue::Value> values;
+	//values.reserve(count);
 
 	Data data
 	{
@@ -31,7 +33,7 @@ void ProduceFn(const size_t count, Queue& queue)
 	for (size_t i = 0; i < count; ++i)
 	{
 		const auto meta_data = queue.Emplace(data);
-		values.emplace_back(Queue::Value{ .meta_data = meta_data, .data = data, });
+		//values.emplace_back(Queue::Value{ .meta_data = meta_data, .data = data, });
 		++data.num;
 	}
 }
@@ -49,8 +51,7 @@ void ConsumeFn(Queue& queue, Report& report)
 					auto& report_value = report[value.data.id];
 					if (value.data.num != report_value.data.num + 1)
 					{
-						std::cout << "!" << std::flush;
-						//throw std::runtime_error("Sequence failed!");
+						throw std::runtime_error("Sequence failed!");
 					}
 					report_value = value;
 				},
@@ -79,22 +80,32 @@ int main()
 	//	const auto data = queue.Dequeue();
 	//}
 
+	using namespace std::chrono;
+
 	{
-		constexpr auto producer_threads_count = 4;
-		constexpr size_t messages_count = 1'000;
-		constexpr size_t buffer_size = 16;
 		Report report;
-		Queue queue(buffer_size);
+
 		{
-			auto consume_thread = std::jthread{ &ConsumeFn, std::ref(queue), std::ref(report) };
+			constexpr auto producer_threads_count = 4;
+			constexpr size_t messages_count = 1'000'000;
+			constexpr size_t buffer_size = 64 * 1024;
+			Queue queue(buffer_size);
+
+			const auto start = steady_clock::now();
 			{
-				std::array<std::jthread, producer_threads_count> producer_threads;
-				for (auto& thread : producer_threads)
+				auto consume_thread = std::jthread{ &ConsumeFn, std::ref(queue), std::ref(report) };
 				{
-					thread = std::jthread{ &ProduceFn, messages_count, std::ref(queue) };
+					std::array<std::jthread, producer_threads_count> producer_threads;
+					for (auto& thread : producer_threads)
+					{
+						thread = std::jthread{ &ProduceFn, messages_count, std::ref(queue) };
+					}
 				}
+				queue.EmplaceStoppedState();
 			}
-			queue.EmplaceStoppedState();
+			const auto end = steady_clock::now();
+
+			std::cout << std::format("overall duration is: {} ms\n", duration_cast<milliseconds>(end - start).count());
 		}
 
 		for (const auto& elem : report)
