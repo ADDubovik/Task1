@@ -41,10 +41,10 @@ void ConsumeFn(Queue& queue, Report& report)
 
 		std::visit(
 			overloads{
-				[&report](const Data& data) {
-					auto& num = report[data.id];
+				[&report](const Queue::Value& value) {
+					auto& num = report[value.data.id];
 					++num;
-					if (data.num != num)
+					if (value.data.num != num)
 					{
 						throw std::runtime_error("Sequence failed!");
 					}

@@ -14,8 +14,21 @@ template<typename T>
 class MpscQueue
 {
 public:
+  struct StateMetaData
+  {
+    size_t sequence;
+    size_t index;
+  };
+
+  struct Value
+  {
+    StateMetaData meta_data;
+    T data;
+  };
+
   struct StoppedState
   {
+    StateMetaData meta_data;
   };
 
 public:
@@ -40,13 +53,13 @@ public:
   void Emplace(Args&&... args) noexcept;
 
   // To be invoked from a single thread
-  [[nodiscard]] std::variant<T, StoppedState> Dequeue() noexcept;
+  [[nodiscard]] std::variant<Value, StoppedState> Dequeue() noexcept;
 
 private:
   struct alignas(cache_line) Node
   {
     std::atomic_bool is_filled;
-    std::variant<T, StoppedState> data;
+    std::variant<Value, StoppedState> data;
   };
 
 private:
@@ -68,7 +81,13 @@ private:
       } noexcept;
     });
 
-    node.data.emplace<Type>(std::forward<Args>(args) ...);
+    StateMetaData meta_data
+    {
+      .sequence = sequence,
+      .index = index,
+    };
+
+    node.data.emplace<Type>(meta_data, std::forward<Args>(args) ...);
     // TODO: memory order?
     node.is_filled.store(true);
     node.is_filled.notify_one();
@@ -89,7 +108,7 @@ template<typename T>
 template<typename... Args>
 void MpscQueue<T>::Emplace(Args&&... args) noexcept
 {
-  EmplaceImpl<T>(std::forward<Args>(args) ...);
+  EmplaceImpl<Value>(std::forward<Args>(args) ...);
 }
 
 template<typename T>
@@ -99,7 +118,7 @@ void MpscQueue<T>::EmplaceStoppedState()
 }
 
 template<typename T>
-std::variant<T, typename MpscQueue<T>::StoppedState> MpscQueue<T>::Dequeue() noexcept
+std::variant<typename MpscQueue<T>::Value, typename MpscQueue<T>::StoppedState> MpscQueue<T>::Dequeue() noexcept
 {
   const auto index = _read_sequence % _buf_size;
   ++_read_sequence;
@@ -110,11 +129,11 @@ std::variant<T, typename MpscQueue<T>::StoppedState> MpscQueue<T>::Dequeue() noe
     node.is_filled.wait(false);
   }
 
-  std::variant<T, StoppedState> result;
+  std::variant<Value, StoppedState> result;
   std::visit(
     overloads{
-      [&result](T& t) {
-        result.emplace<T>(std::move(t));
+      [&result](Value& value) {
+        result.emplace<Value>(std::move(value));
       },
       [&result](const StoppedState&) {
         result.emplace<StoppedState>();
