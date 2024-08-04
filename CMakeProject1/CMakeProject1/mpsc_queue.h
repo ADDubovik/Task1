@@ -26,13 +26,21 @@ public:
   {
   }
 
+  MpscQueue(const MpscQueue&) = delete;
+  MpscQueue(MpscQueue&&) = delete;
+
+  MpscQueue& operator=(const MpscQueue&) = delete;
+  MpscQueue& operator=(MpscQueue&&) = delete;
+
+  ~MpscQueue() = default;
+
   void EmplaceStoppedState();
 
   template<typename... Args>
   void Emplace(Args&&... args) noexcept;
 
   // To be invoked from a single thread
-  std::variant<T, StoppedState> Dequeue() noexcept;
+  [[nodiscard]] std::variant<T, StoppedState> Dequeue() noexcept;
 
 private:
   struct alignas(cache_line) Node
