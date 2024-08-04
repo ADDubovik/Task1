@@ -137,6 +137,7 @@ MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceImpl(Args&&... args) noexcept
       // Logic error
       std::terminate();
     }
+    node.is_filled.notify_one();
   }
 
   {
@@ -160,10 +161,7 @@ std::variant<typename MpscQueue<T>::Value, typename MpscQueue<T>::StoppedState> 
 
   auto& node = _buffer[index];
 
-  while (!node.is_filled)
-  {
-    std::this_thread::yield();
-  }
+  node.is_filled.wait(false);
 
   static_assert(std::is_move_constructible_v<Value>);
 
