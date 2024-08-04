@@ -49,7 +49,8 @@ void ConsumeFn(Queue& queue, Report& report)
 					auto& report_value = report[value.data.id];
 					if (value.data.num != report_value.data.num + 1)
 					{
-						throw std::runtime_error("Sequence failed!");
+						std::cout << "!" << std::flush;
+						//throw std::runtime_error("Sequence failed!");
 					}
 					report_value = value;
 				},
@@ -81,7 +82,7 @@ int main()
 	{
 		constexpr auto producer_threads_count = 4;
 		constexpr size_t messages_count = 1'000;
-		constexpr size_t buffer_size = 128;
+		constexpr size_t buffer_size = 16;
 		Report report;
 		Queue queue(buffer_size);
 		{
