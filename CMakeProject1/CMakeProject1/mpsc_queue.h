@@ -47,10 +47,10 @@ public:
 
   ~MpscQueue() = default;
 
-  void EmplaceStoppedState();
+  StateMetaData EmplaceStoppedState();
 
   template<typename... Args>
-  void Emplace(Args&&... args) noexcept;
+  StateMetaData Emplace(Args&&... args) noexcept;
 
   // To be invoked from a single thread
   [[nodiscard]] std::variant<Value, StoppedState> Dequeue() noexcept;
@@ -64,7 +64,7 @@ private:
 
 private:
   template<typename Type, typename... Args>
-  void EmplaceImpl(Args&&... args) noexcept
+  StateMetaData EmplaceImpl(Args&&... args) noexcept
   {
     const auto sequence = _write_sequence.fetch_add(1);
     const auto index = sequence % _buf_size;
@@ -91,6 +91,8 @@ private:
     // TODO: memory order?
     node.is_filled.store(true);
     node.is_filled.notify_one();
+
+    return meta_data;
   }
 
 private:
@@ -106,15 +108,15 @@ private:
 
 template<typename T>
 template<typename... Args>
-void MpscQueue<T>::Emplace(Args&&... args) noexcept
+MpscQueue<T>::StateMetaData MpscQueue<T>::Emplace(Args&&... args) noexcept
 {
-  EmplaceImpl<Value>(std::forward<Args>(args) ...);
+  return EmplaceImpl<Value>(std::forward<Args>(args) ...);
 }
 
 template<typename T>
-void MpscQueue<T>::EmplaceStoppedState()
+MpscQueue<T>::StateMetaData MpscQueue<T>::EmplaceStoppedState()
 {
-  EmplaceImpl<StoppedState>();
+  return EmplaceImpl<StoppedState>();
 }
 
 template<typename T>

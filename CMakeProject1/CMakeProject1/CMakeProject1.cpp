@@ -14,11 +14,14 @@ struct Data
 };
 
 using Queue = MpscQueue<Data>;
-using Report = std::map<std::thread::id, size_t>;
+using Report = std::map<std::thread::id, Queue::Value>;
 
 void ProduceFn(const size_t count, Queue& queue)
 {
 	const auto id = std::this_thread::get_id();
+	std::vector<Queue::Value> values;
+	values.reserve(count);
+
 	Data data
 	{
 		.id = id,
@@ -27,7 +30,8 @@ void ProduceFn(const size_t count, Queue& queue)
 
 	for (size_t i = 0; i < count; ++i)
 	{
-		queue.Emplace(data);
+		const auto meta_data = queue.Emplace(data);
+		values.emplace_back(Queue::Value{ .meta_data = meta_data, .data = data, });
 		++data.num;
 	}
 }
@@ -42,12 +46,12 @@ void ConsumeFn(Queue& queue, Report& report)
 		std::visit(
 			overloads{
 				[&report](const Queue::Value& value) {
-					auto& num = report[value.data.id];
-					++num;
-					if (value.data.num != num)
+					auto& report_value = report[value.data.id];
+					if (value.data.num != report_value.data.num + 1)
 					{
 						throw std::runtime_error("Sequence failed!");
 					}
+					report_value = value;
 				},
 				[&stopped](const Queue::StoppedState&) {
 					stopped = true;
@@ -94,7 +98,7 @@ int main()
 
 		for (const auto& elem : report)
 		{
-			std::cout << elem.first << ": " << elem.second << std::endl;
+			std::cout << elem.first << ": " << elem.second.data.num << std::endl;
 		}
 	}
 
