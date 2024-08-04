@@ -4,6 +4,7 @@
 #include <vector>
 #include <variant>
 #include <thread>
+#include <type_traits>
 
 template<class... Ts>
 struct overloads : Ts... { using Ts::operator()...; };
@@ -163,6 +164,8 @@ std::variant<typename MpscQueue<T>::Value, typename MpscQueue<T>::StoppedState> 
   {
     std::this_thread::yield();
   }
+
+  static_assert(std::is_move_constructible_v<Value>);
 
   std::variant<Value, StoppedState> result;
   std::visit(
